@@ -18,6 +18,12 @@ runfiles_export_envvars
 
 """
 
+_SUDO_PROMPT = """
+echo
+echo Sudo is required to run these targets.
+echo
+"""
+
 def _multirun_impl(ctx):
     instructions_file = ctx.actions.declare_file(ctx.label.name + ".json")
     runnerInfo = ctx.attr._runner[DefaultInfo]
@@ -70,11 +76,14 @@ def _multirun_impl(ctx):
         content = instructions.to_json(),
     )
 
-    script = 'exec ./%s -f %s "$@"\n' % (shell.quote(runner_exe.short_path), shell.quote(instructions_file.short_path))
+    if ctx.attr.sudo:
+        script = 'exec sudo -E ./%s -f %s "$@"\n' % (shell.quote(runner_exe.short_path), shell.quote(instructions_file.short_path))
+    else:
+        script = 'exec ./%s -f %s "$@"\n' % (shell.quote(runner_exe.short_path), shell.quote(instructions_file.short_path))
     out_file = ctx.actions.declare_file(ctx.label.name + ".bash")
     ctx.actions.write(
         output = out_file,
-        content = _CONTENT_PREFIX + script,
+        content = _CONTENT_PREFIX + _SUDO_PROMPT + script if ctx.attr.sudo else _CONTENT_PREFIX + script,
         is_executable = True,
     )
     return [DefaultInfo(
@@ -111,6 +120,9 @@ _multirun = rule(
         "quiet": attr.bool(
             default = False,
             doc = "Limit output where possible",
+        ),
+        "sudo": attr.bool(
+            doc = "Whether sudo (root) is required to run commands",
         ),
         "_bash_runfiles": attr.label(
             default = Label("@bazel_tools//tools/bash/runfiles"),
